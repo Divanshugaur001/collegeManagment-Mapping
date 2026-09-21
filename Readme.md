@@ -1,91 +1,59 @@
-# Professor–Subject Relationship in Spring Boot JPA
+# 🔗 JPA Entity Relationships & Mapping
 
-## 📌 Overview
+This project implements three major JPA/Hibernate entity relationships:
 
-In this module, we implemented a **One-to-Many and Many-to-One relationship** between `Professor` and `Subject` using Spring Boot, JPA, and Hibernate.
+```text
+Professor 1 ───────── * Subject
+
+Professor * ───────── * Student
+
+Student   1 ───────── 1 Administrator
+```
+
+---
+
+## 1. 👨‍🏫 Professor → Subject
 
 ### Relationship
 
-- One Professor can teach multiple Subjects.
-- One Subject belongs to only one Professor.
+```text
+One Professor → Many Subjects
+```
+
+A professor can teach multiple subjects, while each subject belongs to one professor.
+
+### Professor Entity
+
+```java
+@OneToMany(mappedBy = "professor")
+private List<Subject> subjects = new ArrayList<>();
+```
+
+### Subject Entity
+
+```java
+@ManyToOne
+@JoinColumn(name = "professor_id")
+private Professor professor;
+```
+
+### Database
+
+The foreign key is stored in the `subject` table:
 
 ```text
-Professor 1 ─────────── * Subject
-🛠️ Technologies Used
-Java
-Spring Boot
-Spring Data JPA
-Hibernate
-MySQL
-Lombok
-Maven
-📂 Entity Relationship
-Professor Entity
+subject
+-------------------------
+id
+name
+professor_id  ← FK
+```
 
-The Professor entity represents the parent side of the relationship.
+### Mapping Method
 
-@OneToMany(mappedBy = "professor")
-private List<Subject> subjects = new ArrayList<>();
-Subject Entity
+The relationship is mapped using the IDs of existing Professor and Subject:
 
-The Subject entity represents the owning side of the relationship.
-
-@ManyToOne
-@JoinColumn(name = "professor_id")
-private Professor professor;
-🗄️ Database Structure
-Professor Table
-id	name
-1	Rahul
-Subject Table
-id	name	professor_id
-1	Java	1
-2	Spring Boot	1
-3	Hibernate	1
-
-The professor_id column acts as a Foreign Key in the subject table.
-
-🔑 Important JPA Concepts
-1. @OneToMany
-
-Used in the Professor entity.
-
-@OneToMany(mappedBy = "professor")
-private List<Subject> subjects = new ArrayList<>();
-
-It means that one professor can have multiple subjects.
-
-2. @ManyToOne
-
-Used in the Subject entity.
-
-@ManyToOne
-@JoinColumn(name = "professor_id")
-private Professor professor;
-
-It means that multiple subjects can belong to one professor.
-
-3. mappedBy
-mappedBy = "professor"
-
-Here, professor refers to the field name inside the Subject entity:
-
-private Professor professor;
-
-It does not refer to the database column name.
-
-4. Owning Side
-
-The Subject entity is the owning side because it contains:
-
-@JoinColumn(name = "professor_id")
-
-The foreign key is maintained by the Subject entity.
-
-🔗 Mapping Service Method
-
-The following method maps an existing Professor to an existing Subject.
-
+```java
 public Professor mapSubject(Long professorId, Long subjectId) {
 
     Professor professor = professorRepo.findById(professorId)
@@ -97,152 +65,428 @@ public Professor mapSubject(Long professorId, Long subjectId) {
                     new EntityNotFoundException("Subject not found"));
 
     professor.getSubjects().add(subject);
-
     subject.setProfessor(professor);
 
     return professorRepo.save(professor);
 }
-Explanation
-Find Professor
-Professor professor = professorRepo.findById(professorId)
-        .orElseThrow(() ->
-                new EntityNotFoundException("Professor not found"));
+```
 
-Fetches the Professor using the provided ID.
+The method:
 
-Find Subject
-Subject subject = subjectRepo.findById(subjectId)
-        .orElseThrow(() ->
-                new EntityNotFoundException("Subject not found"));
+1. Finds the Professor.
+2. Finds the Subject.
+3. Adds the Subject to the Professor's subject list.
+4. Sets the Professor inside the Subject.
+5. Saves the Professor.
 
-Fetches the Subject using the provided ID.
+### API
 
-Add Subject to Professor
-professor.getSubjects().add(subject);
-
-Adds the Subject to the Professor's subject list in Java.
-
-Set Professor in Subject
-subject.setProfessor(professor);
-
-Sets the Professor reference inside the Subject entity.
-
-Since Subject is the owning side, this step is important for updating the foreign key.
-
-🌐 API Endpoint
-Map Professor to Subject
+```http
 POST /professors/{professorId}/subjects/{subjectId}
-Example Request
+```
+
+Example:
+
+```http
 POST http://localhost:8080/professors/1/subjects/2
-Path Variables
-Variable	Description
-professorId	ID of the Professor
-subjectId	ID of the Subject
-Postman Configuration
-Method: POST
-URL: http://localhost:8080/professors/1/subjects/2
-Body: No body required
+```
 
-The Professor and Subject must already exist in the database.
+No request body is required.
 
-🧪 Example
-Before Mapping
+---
 
-Professor:
+# 2. 👨‍🏫 Professor ↔ Student
 
-{
-  "id": 1,
-  "name": "Rahul",
-  "subjects": []
+## Many-to-Many Relationship
+
+```text
+Many Professors ↔ Many Students
+```
+
+A Professor can be associated with multiple Students, and a Student can be associated with multiple Professors.
+
+### Professor Entity
+
+Professor is the owning side:
+
+```java
+@ManyToMany(fetch = FetchType.LAZY)
+@JoinTable(
+        name = "professor_student",
+        joinColumns = @JoinColumn(name = "professor_id"),
+        inverseJoinColumns = @JoinColumn(name = "student_id")
+)
+private List<Student> students = new ArrayList<>();
+```
+
+### Student Entity
+
+Student is the inverse side:
+
+```java
+@ManyToMany(mappedBy = "students")
+private List<Professor> professors = new ArrayList<>();
+```
+
+### Junction Table
+
+A Many-to-Many relationship requires a third table:
+
+```text
+professor_student
+-------------------------
+professor_id
+student_id
+```
+
+Example:
+
+```text
+professor_id | student_id
+-------------|-----------
+1            | 2
+1            | 3
+2            | 2
+```
+
+This means:
+
+* Professor 1 is associated with Student 2.
+* Professor 1 is associated with Student 3.
+* Professor 2 is associated with Student 2.
+
+---
+
+## Mapping Method
+
+```java
+public Professor mapStudent(Long professorId, Long studentId) {
+
+    Professor professor = professorRepo.findById(professorId)
+            .orElseThrow(() ->
+                    new EntityNotFoundException("Professor not found"));
+
+    Student student = studentRepo.findById(studentId)
+            .orElseThrow(() ->
+                    new EntityNotFoundException("Student not found"));
+
+    professor.getStudents().add(student);
+    student.getProfessors().add(professor);
+
+    return professorRepo.save(professor);
 }
+```
 
-Subject:
+### Mapping Logic
 
-{
-  "id": 2,
-  "name": "Spring Boot",
-  "professor": null
+```java
+professor.getStudents().add(student);
+```
+
+Adds the Student to the Professor's list.
+
+```java
+student.getProfessors().add(professor);
+```
+
+Adds the Professor to the Student's list.
+
+Both sides are synchronized in Java.
+
+### API
+
+```http
+POST /professors/{professorId}/students/{studentId}
+```
+
+Example:
+
+```http
+POST http://localhost:8080/professors/1/students/2
+```
+
+No request body is required.
+
+---
+
+# 3. 🎓 Student ↔ Administrator
+
+## One-to-One Relationship
+
+```text
+One Student ↔ One Administrator
+```
+
+Each Student has one Administrator record, and each Administrator record belongs to one Student.
+
+### Student Entity
+
+Student is the owning side:
+
+```java
+@OneToOne
+@JoinColumn(name = "administrator_id")
+private Administrator administrator;
+```
+
+### Administrator Entity
+
+Administrator is the inverse side:
+
+```java
+@OneToOne(mappedBy = "administrator")
+private Student student;
+```
+
+### Database
+
+The foreign key is maintained by the Student table:
+
+```text
+student
+-------------------------
+id
+name
+administrator_id  ← FK
+```
+
+---
+
+## Mapping Method
+
+```java
+public Student mapAdministrator(Long id, Long administratorId) {
+
+    Administrator administrator = administratorRepo.findById(administratorId)
+            .orElseThrow(() ->
+                    new EntityNotFoundException("Administrator not found"));
+
+    Student student = studentRepo.findById(id)
+            .orElseThrow(() ->
+                    new EntityNotFoundException("Student not found"));
+
+    student.setAdministrator(administrator);
+    administrator.setStudent(student);
+
+    return studentRepo.save(student);
 }
-After Mapping
+```
 
-Professor:
+### Mapping Logic
 
-{
-  "id": 1,
-  "name": "Rahul",
-  "subjects": [
-    {
-      "id": 2,
-      "name": "Spring Boot"
-    }
-  ]
-}
+```java
+student.setAdministrator(administrator);
+```
 
-The subject table will contain:
+Sets the Administrator inside Student.
 
-id	name	professor_id
-2	Spring Boot	1
-⚠️ Common Issues
-1. NullPointerException
+```java
+administrator.setStudent(student);
+```
 
-If the list is not initialized:
+Synchronizes the reverse side in Java.
 
-private List<Subject> subjects;
+The Student is the owning side because it contains `@JoinColumn`.
 
-Then this may cause an error:
+### API
 
+```http
+POST /students/{studentId}/administrators/{administratorId}
+```
+
+Example:
+
+```http
+POST http://localhost:8080/students/1/administrators/2
+```
+
+No request body is required.
+
+---
+
+# 🔑 Owning Side vs Inverse Side
+
+One of the most important concepts learned in this project is the **owning side** of a JPA relationship.
+
+| Relationship            | Owning Side | Inverse Side  |
+| ----------------------- | ----------- | ------------- |
+| Student ↔ Administrator | Student     | Administrator |
+| Professor ↔ Subject     | Subject     | Professor     |
+| Professor ↔ Student     | Professor   | Student       |
+
+The owning side is normally the side that contains:
+
+```java
+@JoinColumn
+```
+
+or:
+
+```java
+@JoinTable
+```
+
+The inverse side uses:
+
+```java
+mappedBy
+```
+
+---
+
+# 🔄 Bidirectional Mapping
+
+The project uses bidirectional relationships.
+
+For example:
+
+```text
+Professor
+   ↓
+Students
+   ↓
+Professors
+   ↓
+Students
+```
+
+Therefore, when mapping relationships, both Java-side references are synchronized.
+
+### One-to-One
+
+```java
+student.setAdministrator(administrator);
+administrator.setStudent(student);
+```
+
+### One-to-Many / Many-to-One
+
+```java
 professor.getSubjects().add(subject);
-Solution
+subject.setProfessor(professor);
+```
 
-Initialize the list:
+### Many-to-Many
 
-private List<Subject> subjects = new ArrayList<>();
-2. Infinite JSON Recursion
+```java
+professor.getStudents().add(student);
+student.getProfessors().add(professor);
+```
 
-If both entities contain references to each other, the JSON response may become recursive:
+---
 
-Professor → Subject → Professor → Subject → ...
+# ⚡ Lazy Fetching
 
-To avoid this, you can use:
+The Many-to-Many relationship uses:
 
+```java
+fetch = FetchType.LAZY
+```
+
+Example:
+
+```java
+@ManyToMany(fetch = FetchType.LAZY)
+```
+
+Lazy fetching means related entities are not unnecessarily loaded immediately.
+
+The related Students are loaded when the relationship is accessed.
+
+---
+
+# 🔗 Cascade
+
+Cascade controls whether operations on one entity are propagated to related entities.
+
+Example:
+
+```java
+@OneToOne(cascade = CascadeType.ALL)
+```
+
+Common cascade types:
+
+```text
+PERSIST
+MERGE
+REMOVE
+REFRESH
+DETACH
+ALL
+```
+
+Cascade should be used carefully, especially with Many-to-Many relationships where entities can be shared.
+
+---
+
+# ⚠️ JSON Infinite Recursion
+
+Bidirectional relationships can cause recursive JSON responses.
+
+For example:
+
+```text
+Professor
+   ↓
+Student
+   ↓
+Professor
+   ↓
+Student
+   ↓
+...
+```
+
+This can result in a `StackOverflowError` during JSON serialization.
+
+To prevent this, `@JsonIgnore` can be placed on one side:
+
+```java
 @JsonIgnore
-private Professor professor;
+@ManyToMany(mappedBy = "students")
+private List<Professor> professors;
+```
 
-in the Subject entity.
+`@JsonIgnore` only affects JSON serialization. It does not remove the JPA relationship.
 
-Import:
+---
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+# 🧠 Key Learning
 
-@JsonIgnore only affects JSON serialization. It does not remove the JPA relationship.
+This project demonstrates how relationships are handled in a real relational database:
 
-✅ Learning Outcomes
+```text
+@OneToOne
+    ↓
+Foreign Key
 
-After completing this module, you should understand:
+@OneToMany + @ManyToOne
+    ↓
+Foreign Key
 
- @OneToMany
- @ManyToOne
- @JoinColumn
- mappedBy
- Owning and inverse sides
- Foreign key mapping
- Mapping existing entities using IDs
- Updating bidirectional relationships
- Testing APIs using Postman
- Handling JSON recursion
- Initializing relationship collections
-🚀 Next Steps
+@ManyToMany
+    ↓
+Junction Table
+```
 
-Possible improvements for this module:
+The relationship is not created by sending complete nested objects from Postman. Instead, existing entities can be connected using their IDs through dedicated mapping APIs.
 
-Add an API to remove a Subject from a Professor.
-Add an API to change a Subject's Professor.
-Fetch all Subjects of a Professor.
-Add validation for duplicate mappings.
-Handle exceptions globally.
-Add pagination and search functionality.
-👨‍💻 Author
+Example:
 
-Divanshu Gaur
+```text
+POST /professors/1/students/2
+```
 
-This module is part of a practical Spring Boot and JPA learning project.
+means:
+
+```text
+Professor ID = 1
+Student ID   = 2
+
+        ↓
+
+Create relationship
+```
+
+This approach helped practice **JPA relationship mapping, foreign keys, junction tables, owning/inverse sides, bidirectional relationships, lazy loading, cascade behavior, and JSON serialization.**
